@@ -1,0 +1,8 @@
+{
+  "name": "Sehat Mitra",
+  "description": "Your compassionate AI Health Partner for accessible and trustworthy health information.",
+  "requestFramePermissions": [
+    "microphone",
+    "geolocation"
+  ]
+}
