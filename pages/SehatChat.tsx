@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
-import { Send, Loader2, User, Stethoscope } from 'lucide-react';
-import { createChatSession } from '../services/geminiService';
+import { Send, Loader2, User, Stethoscope, WifiOff } from 'lucide-react';
+import { createChatSession, OFFLINE_DISEASE_DB } from '../services/geminiService';
 import { Message } from '../types';
 
 export default function SehatChat() {
@@ -15,6 +15,7 @@ export default function SehatChat() {
   ]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
+  const [isOffline, setIsOffline] = useState(false);
   const chatSession = useRef<any>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
@@ -30,6 +31,27 @@ export default function SehatChat() {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
+  const handleLocalResponse = (text: string) => {
+    const input = text.toLowerCase();
+    
+    // Keyword matching logic
+    if (input.includes('namaste') || input.includes('hello') || input.includes('hi')) {
+      return "Namaste! How can I help you today? I have verified local info about fever, malaria, dengue, diabetes, and dehydration if your internet is slow.";
+    }
+    
+    for (const [key, data] of Object.entries(OFFLINE_DISEASE_DB)) {
+      if (input.includes(key)) {
+        return `I'm currently in **offline mode**, but I have verified information about **${data.name}**:\n\n${data.description}\n\n**Common Symptoms:**\n${data.symptoms.map(s => `- ${s}`).join('\n')}\n\n**Prevention:**\n${data.prevention.map(p => `- ${p}`).join('\n')}\n\n*Please consult a doctor for a professional diagnosis.*`;
+      }
+    }
+
+    if (input.includes('diet') || input.includes('food') || input.includes('eat')) {
+      return "A balanced diet is essential. Ensure you include seasonal fruits, green vegetables, and plenty of water. Local superfoods like Amla and Turmeric are great for immunity!";
+    }
+
+    return "I'm currently unable to connect to my AI brain (Offline Mode). I couldn't find a local guide for that specific question. Try asking about 'fever', 'diet', or 'mosquitoes'.";
+  };
+
   const handleSend = async () => {
     if (!input.trim() || loading) return;
 
@@ -41,8 +63,10 @@ export default function SehatChat() {
     };
     
     setMessages(prev => [...prev, userMsg]);
+    const currentInput = input;
     setInput('');
     setLoading(true);
+    setIsOffline(false);
 
     try {
       if (!chatSession.current) {
@@ -50,7 +74,7 @@ export default function SehatChat() {
       }
       
       const result = await chatSession.current.sendMessage({ message: userMsg.text });
-      const responseText = result.text; // Access text directly from property
+      const responseText = result.text;
 
       const botMsg: Message = {
         id: (Date.now() + 1).toString(),
@@ -61,15 +85,19 @@ export default function SehatChat() {
       
       setMessages(prev => [...prev, botMsg]);
     } catch (error) {
-      console.error("Chat error", error);
-      const errorMsg: Message = {
+      console.warn("Chat API failed, switching to local response.");
+      setIsOffline(true);
+      const localText = handleLocalResponse(currentInput);
+
+      const botMsg: Message = {
         id: (Date.now() + 1).toString(),
         role: 'model',
-        text: "I apologize, but I'm having trouble connecting right now. Please try again.",
+        text: localText,
         timestamp: new Date(),
-        isError: true
+        isError: false // We show it as a valid local response instead
       };
-      setMessages(prev => [...prev, errorMsg]);
+      
+      setMessages(prev => [...prev, botMsg]);
     } finally {
       setLoading(false);
     }
@@ -77,6 +105,14 @@ export default function SehatChat() {
 
   return (
     <div className="h-[calc(100vh-8rem)] flex flex-col bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-200 dark:border-gray-700 overflow-hidden">
+      {/* Offline Banner */}
+      {isOffline && (
+        <div className="bg-amber-50 dark:bg-amber-900/20 px-4 py-2 border-b border-amber-100 dark:border-amber-800 text-amber-700 dark:text-amber-300 text-xs flex items-center justify-center gap-2">
+          <WifiOff size={12} />
+          <span>Connected to Local Health Database (Offline Mode)</span>
+        </div>
+      )}
+
       <div className="flex-1 overflow-y-auto p-4 space-y-4">
         {messages.map((msg) => (
           <div
@@ -141,7 +177,7 @@ export default function SehatChat() {
           </button>
         </div>
         <p className="text-center text-xs text-gray-500 dark:text-gray-400 mt-2">
-          Sehat Mitra may display inaccurate info, including about medical conditions. Always verify with a doctor.
+          Sehat Mitra may display inaccurate info. Verified local data available for common illnesses.
         </p>
       </div>
     </div>

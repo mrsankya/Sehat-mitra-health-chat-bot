@@ -1,12 +1,13 @@
 import React, { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
-import { AlertTriangle, Send, Loader2 } from 'lucide-react';
-import { checkSymptoms } from '../services/geminiService';
+import { AlertTriangle, Send, Loader2, Volume2, BrainCircuit } from 'lucide-react';
+import { checkSymptoms, speakText } from '../services/geminiService';
 
 export default function SymptomChecker() {
   const [input, setInput] = useState('');
   const [response, setResponse] = useState('');
   const [loading, setLoading] = useState(false);
+  const [speaking, setSpeaking] = useState(false);
 
   const handleCheck = async () => {
     if (!input.trim()) return;
@@ -19,6 +20,31 @@ export default function SymptomChecker() {
       setResponse("I'm sorry, but I encountered an error while processing your request. Please try again later.");
     } finally {
       setLoading(false);
+    }
+  };
+
+  const handleSpeak = async () => {
+    if (!response || speaking) return;
+    setSpeaking(true);
+    try {
+      const base64Audio = await speakText(response.replace(/[*#]/g, '').substring(0, 500) + "..."); // Limit text for TTS demo
+      if (base64Audio) {
+        const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
+        const binaryString = atob(base64Audio);
+        const bytes = new Uint8Array(binaryString.length);
+        for (let i = 0; i < binaryString.length; i++) {
+            bytes[i] = binaryString.charCodeAt(i);
+        }
+        const buffer = await audioContext.decodeAudioData(bytes.buffer);
+        const source = audioContext.createBufferSource();
+        source.buffer = buffer;
+        source.connect(audioContext.destination);
+        source.start(0);
+        source.onended = () => setSpeaking(false);
+      }
+    } catch (e) {
+      console.error(e);
+      setSpeaking(false);
     }
   };
 
@@ -43,7 +69,13 @@ export default function SymptomChecker() {
       </div>
 
       <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 p-6">
-        <h2 className="text-xl font-semibold text-gray-900 dark:text-white mb-4">Describe Your Symptoms</h2>
+        <div className="flex justify-between items-center mb-4">
+            <h2 className="text-xl font-semibold text-gray-900 dark:text-white">Describe Your Symptoms</h2>
+            <div className="flex items-center gap-1 px-3 py-1 bg-purple-100 dark:bg-purple-900/30 text-purple-700 dark:text-purple-300 rounded-full text-xs font-medium">
+                <BrainCircuit size={14} />
+                Deep Thinking Enabled
+            </div>
+        </div>
         <div className="relative">
           <textarea
             value={input}
@@ -62,8 +94,21 @@ export default function SymptomChecker() {
       </div>
 
       {response && (
-        <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 p-8 prose dark:prose-invert max-w-none">
-          <ReactMarkdown>{response}</ReactMarkdown>
+        <div className="bg-white dark:bg-gray-800 rounded-2xl shadow-sm border border-gray-100 dark:border-gray-700 p-8">
+          <div className="flex justify-between items-start mb-4">
+            <h3 className="text-lg font-semibold text-gray-900 dark:text-white">AI Analysis</h3>
+            <button 
+                onClick={handleSpeak} 
+                disabled={speaking}
+                className={`p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-700 transition-colors ${speaking ? 'text-brand-500' : 'text-gray-500'}`}
+                title="Read aloud"
+            >
+                {speaking ? <Loader2 className="w-5 h-5 animate-spin"/> : <Volume2 className="w-5 h-5" />}
+            </button>
+          </div>
+          <div className="prose dark:prose-invert max-w-none">
+            <ReactMarkdown>{response}</ReactMarkdown>
+          </div>
         </div>
       )}
     </div>

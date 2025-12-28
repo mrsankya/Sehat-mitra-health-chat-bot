@@ -2,7 +2,8 @@ import React, { useState } from 'react';
 import { Outlet, NavLink, useLocation } from 'react-router-dom';
 import { 
   Menu, X, Home, Stethoscope, MessageCircle, 
-  Syringe, MapPin, BookOpen, Settings, LogOut, ShieldCheck, Newspaper
+  Syringe, MapPin, BookOpen, Settings, LogOut, ShieldCheck, Newspaper,
+  Activity, ScanLine
 } from 'lucide-react';
 import { useAuth } from '../contexts/AuthContext';
 import { useTheme } from '../contexts/ThemeContext';
@@ -17,6 +18,8 @@ export default function Layout() {
     { name: 'Dashboard', path: '/', icon: Home },
     { name: 'Symptom Checker', path: '/symptoms', icon: Stethoscope },
     { name: 'Sehat Chat', path: '/chat', icon: MessageCircle },
+    { name: 'Live Pulse', path: '/live', icon: Activity }, // NEW
+    { name: 'Smart Scan', path: '/scan', icon: ScanLine }, // NEW
     { name: 'Vaccination', path: '/vaccination', icon: Syringe },
     { name: 'Find Resources', path: '/resources', icon: MapPin },
     { name: 'Knowledge Base', path: '/knowledge', icon: BookOpen },
