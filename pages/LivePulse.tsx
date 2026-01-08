@@ -1,3 +1,4 @@
+
 import React, { useState, useRef, useEffect } from 'react';
 import { Mic, MicOff, Activity, Volume2, StopCircle } from 'lucide-react';
 import { LiveServerMessage, Modality } from '@google/genai';
@@ -5,12 +6,9 @@ import { getRawAI } from '../services/geminiService';
 
 export default function LivePulse() {
   const [connected, setConnected] = useState(false);
-  const [speaking, setSpeaking] = useState(false); // User speaking
+  const [speaking, setSpeaking] = useState(false);
   const [botSpeaking, setBotSpeaking] = useState(false);
   const [error, setError] = useState('');
-  
-  const videoRef = useRef<HTMLVideoElement>(null);
-  const canvasRef = useRef<HTMLCanvasElement>(null);
   
   // Audio Refs
   const inputContextRef = useRef<AudioContext | null>(null);
@@ -78,10 +76,19 @@ export default function LivePulse() {
   const startSession = async () => {
     setError('');
     const ai = getRawAI();
+    
+    // Explicitly reset start time for the new context
+    nextStartTimeRef.current = 0;
+
     try {
       // 1. Setup Audio Contexts
       inputContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({sampleRate: 16000});
       outputContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({sampleRate: 24000});
+      
+      // Resume contexts immediately to avoid "suspended" state on restart
+      await inputContextRef.current.resume();
+      await outputContextRef.current.resume();
+
       const outputNode = outputContextRef.current.createGain();
       outputNode.connect(outputContextRef.current.destination);
 
@@ -89,40 +96,37 @@ export default function LivePulse() {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
 
-      // 3. Connect to Gemini Live
+      // 3. Connect to Gemini Live - Using the latest model
       const sessionPromise = ai.live.connect({
-        model: 'gemini-2.5-flash-native-audio-preview-09-2025',
+        model: 'gemini-2.5-flash-native-audio-preview-12-2025',
         callbacks: {
           onopen: () => {
-            console.log("Live Session Opened");
             setConnected(true);
-
-            // Stream Audio Input
             const source = inputContextRef.current!.createMediaStreamSource(stream);
             const scriptProcessor = inputContextRef.current!.createScriptProcessor(4096, 1, 1);
             processorRef.current = scriptProcessor;
 
             scriptProcessor.onaudioprocess = (e) => {
+              if (!connected && !sessionRef.current) return;
+              
               const inputData = e.inputBuffer.getChannelData(0);
-              // Simple VAD visualization
               const vol = inputData.reduce((s, v) => s + Math.abs(v), 0) / inputData.length;
               setSpeaking(vol > 0.01);
 
               const pcmBlob = createPcmBlob(inputData);
               sessionPromise.then((session) => {
-                session.sendRealtimeInput({ media: pcmBlob });
+                if (session) session.sendRealtimeInput({ media: pcmBlob });
               });
             };
             source.connect(scriptProcessor);
             scriptProcessor.connect(inputContextRef.current!.destination);
           },
           onmessage: async (message: LiveServerMessage) => {
-            // Handle Audio Output
             const base64Audio = message.serverContent?.modelTurn?.parts[0]?.inlineData?.data;
-            if (base64Audio) {
+            if (base64Audio && outputContextRef.current) {
                setBotSpeaking(true);
-               if (!outputContextRef.current) return;
                
+               // Sync scheduling with real time
                nextStartTimeRef.current = Math.max(nextStartTimeRef.current, outputContextRef.current.currentTime);
                
                const audioBuffer = await decodeAudioData(
@@ -145,22 +149,23 @@ export default function LivePulse() {
                sourcesRef.current.add(source);
             }
 
-            // Handle Interruption
             if (message.serverContent?.interrupted) {
-                sourcesRef.current.forEach(s => s.stop());
+                sourcesRef.current.forEach(s => {
+                  try { s.stop(); } catch(e) {}
+                });
                 sourcesRef.current.clear();
                 nextStartTimeRef.current = 0;
                 setBotSpeaking(false);
             }
           },
           onclose: () => {
-            console.log("Live Session Closed");
             setConnected(false);
+            stopSession();
           },
           onerror: (e) => {
-            console.error(e);
-            setError("Connection error.");
-            setConnected(false);
+            console.error("Live pulse error:", e);
+            setError("Connection failed. Check permissions.");
+            stopSession();
           }
         },
         config: {
@@ -168,33 +173,51 @@ export default function LivePulse() {
             speechConfig: {
                 voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Zephyr' } }
             },
-            systemInstruction: "You are Sehat Mitra, a helpful health assistant. Speak clearly and simply.",
+            systemInstruction: "You are Sehat Mitra. 1. Be informative, not generic. 2. For vaccination queries, mention typical doses (e.g., Rotavirus/Pentavalent at 3 months) then refer to the 'Vaccination Schedule' tool in our Sehat Mitra app. 3. For illness, suggest 'Symptom Checker' in our Sehat Mitra app. Always provide a direct helpful sentence first and use the phrase 'in our Sehat Mitra app' when referring to features.",
         }
       });
       
       sessionRef.current = sessionPromise;
 
     } catch (e) {
-        console.error(e);
-        setError("Failed to start session. Check permissions.");
+        console.error("Start session failed:", e);
+        setError("Failed to start session.");
     }
   };
 
   const stopSession = async () => {
-    if (streamRef.current) {
-        streamRef.current.getTracks().forEach(t => t.stop());
-        streamRef.current = null;
+    // 1. Close session explicitly
+    if (sessionRef.current) {
+        sessionRef.current.then((s: any) => {
+          if (s) s.close();
+        });
+        sessionRef.current = null;
     }
+
+    // 2. Stop audio processor and stream
     if (processorRef.current) {
         processorRef.current.disconnect();
         processorRef.current = null;
     }
+    if (streamRef.current) {
+        streamRef.current.getTracks().forEach(t => t.stop());
+        streamRef.current = null;
+    }
+
+    // 3. Cleanup sources and restart time
+    sourcesRef.current.forEach(s => {
+      try { s.stop(); } catch(e) {}
+    });
+    sourcesRef.current.clear();
+    nextStartTimeRef.current = 0;
+
+    // 4. Close Contexts
     if (inputContextRef.current) {
-        await inputContextRef.current.close();
+        await inputContextRef.current.close().catch(() => {});
         inputContextRef.current = null;
     }
     if (outputContextRef.current) {
-        await outputContextRef.current.close();
+        await outputContextRef.current.close().catch(() => {});
         outputContextRef.current = null;
     }
     
@@ -203,7 +226,6 @@ export default function LivePulse() {
     setBotSpeaking(false);
   };
 
-  // Cleanup on unmount
   useEffect(() => {
     return () => {
         stopSession();
@@ -217,7 +239,7 @@ export default function LivePulse() {
             <Activity size={32} />
         </div>
         <h2 className="text-3xl font-bold text-gray-900 dark:text-white">Sehat Mitra Live</h2>
-        <p className="text-gray-500 mt-2">Have a natural voice conversation with your health assistant.</p>
+        <p className="text-gray-500 mt-2">Have a natural voice conversation with your health assistant in the Sehat Mitra app.</p>
       </div>
 
       <div className="relative">
@@ -239,7 +261,7 @@ export default function LivePulse() {
         </div>
       </div>
 
-      {error && <p className="text-red-500 text-sm bg-red-50 px-4 py-2 rounded-lg">{error}</p>}
+      {error && <p className="text-red-500 text-sm bg-red-50 px-4 py-2 rounded-lg font-bold">{error}</p>}
 
       <button
         onClick={connected ? stopSession : startSession}
@@ -248,8 +270,8 @@ export default function LivePulse() {
         {connected ? <><StopCircle /> End Call</> : <><Mic /> Start Live Call</>}
       </button>
       
-      <p className="text-xs text-gray-400 max-w-xs text-center">
-        Uses Gemini Live API for real-time low-latency audio interaction. Requires microphone access.
+      <p className="text-xs text-gray-400 max-w-xs text-center font-medium">
+        Powered by Gemini 2.5 Multi-modal Live API in our Sehat Mitra app.
       </p>
     </div>
   );

@@ -1,3 +1,4 @@
+
 import React from 'react';
 import { HashRouter, Routes, Route, Navigate } from 'react-router-dom';
 import Layout from './components/Layout';
@@ -12,8 +13,10 @@ import Admin from './pages/Admin';
 import Login from './pages/Login';
 import LivePulse from './pages/LivePulse';
 import SmartScan from './pages/SmartScan';
+import FeedbackPage from './pages/Feedback';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { ThemeProvider } from './contexts/ThemeContext';
+import { LanguageProvider } from './contexts/LanguageContext';
 
 const ProtectedLayout = () => {
   const { user } = useAuth();
@@ -27,24 +30,27 @@ export default function App() {
   return (
     <HashRouter>
       <ThemeProvider>
-        <AuthProvider>
-          <Routes>
-            <Route path="/login" element={<Login />} />
-            <Route path="/" element={<ProtectedLayout />}>
-              <Route index element={<Home />} />
-              <Route path="symptoms" element={<SymptomChecker />} />
-              <Route path="chat" element={<SehatChat />} />
-              <Route path="live" element={<LivePulse />} />
-              <Route path="scan" element={<SmartScan />} />
-              <Route path="vaccination" element={<Vaccination />} />
-              <Route path="resources" element={<Resources />} />
-              <Route path="knowledge" element={<KnowledgeBase />} />
-              <Route path="news" element={<HealthNews />} />
-              <Route path="admin" element={<Admin />} />
-            </Route>
-            <Route path="*" element={<Navigate to="/" replace />} />
-          </Routes>
-        </AuthProvider>
+        <LanguageProvider>
+          <AuthProvider>
+            <Routes>
+              <Route path="/login" element={<Login />} />
+              <Route path="/" element={<ProtectedLayout />}>
+                <Route index element={<Home />} />
+                <Route path="symptoms" element={<SymptomChecker />} />
+                <Route path="chat" element={<SehatChat />} />
+                <Route path="live" element={<LivePulse />} />
+                <Route path="scan" element={<SmartScan />} />
+                <Route path="vaccination" element={<Vaccination />} />
+                <Route path="resources" element={<Resources />} />
+                <Route path="knowledge" element={<KnowledgeBase />} />
+                <Route path="news" element={<HealthNews />} />
+                <Route path="feedback" element={<FeedbackPage />} />
+                <Route path="admin" element={<Admin />} />
+              </Route>
+              <Route path="*" element={<Navigate to="/" replace />} />
+            </Routes>
+          </AuthProvider>
+        </LanguageProvider>
       </ThemeProvider>
     </HashRouter>
   );

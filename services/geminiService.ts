@@ -1,3 +1,4 @@
+
 import { GoogleGenAI, Type, Modality } from "@google/genai";
 import { DiseaseInfo } from "../types";
 
@@ -42,14 +43,16 @@ export const OFFLINE_DISEASE_DB: Record<string, DiseaseInfo> = {
 };
 
 const getAI = () => {
-  return new GoogleGenAI({ apiKey: process.env.API_KEY || '' });
+  return new GoogleGenAI({ apiKey: process.env.API_KEY });
 };
 
 // --- API FUNCTIONS WITH FALLBACKS ---
 
 export const checkSymptoms = async (symptoms: string) => {
   const ai = getAI();
-  const prompt = `Analyze: "${symptoms}". Format in Markdown. Include disclaimer.`;
+  const prompt = `Provide a detailed medical analysis of: "${symptoms}". Format in Markdown. 
+  Include a clear disclaimer. 
+  ONLY if the user mentions needing deep analysis, photos, or medical reports, suggest: "Check the 'Smart Scan' feature in our Sehat Mitra app for a more accurate analysis of your reports or skin conditions."`;
   
   try {
     const response = await ai.models.generateContent({
@@ -60,20 +63,19 @@ export const checkSymptoms = async (symptoms: string) => {
     return response.text;
   } catch (error) {
     console.warn("Symptom check API failed, using local heuristic.");
-    // Heuristic: Check if user input matches any local disease
     const normalized = symptoms.toLowerCase();
     for (const [key, data] of Object.entries(OFFLINE_DISEASE_DB)) {
       if (normalized.includes(key)) {
-        return `**[OFFLINE MODE]** Based on your description of "${key}", here is some verified info:\n\n### ${data.name}\n${data.description}\n\n**Symptoms:** ${data.symptoms.join(', ')}\n\n**General Advice:** Please seek medical attention. This is a pre-saved information guide.`;
+        return `**[OFFLINE MODE]** Based on your description of "${key}", here is some verified info:\n\n### ${data.name}\n${data.description}\n\n**Symptoms:** ${data.symptoms.join(', ')}\n\n**General Advice:** Please seek medical attention. If you have a physical report, check the 'Smart Scan' feature in our Sehat Mitra app for a detailed digital interpretation.`;
       }
     }
-    return "I'm currently unable to reach the AI engine, and couldn't find a direct match in my local health guides. Please check your internet connection or describe your symptoms differently (e.g., 'fever', 'chills'). **In an emergency, visit a hospital immediately.**";
+    return "I'm currently unable to reach the AI engine. Please check your internet connection. **In an emergency, visit a hospital immediately.**";
   }
 };
 
 export const getDiseaseInfo = async (diseaseName: string): Promise<DiseaseInfo> => {
     const ai = getAI();
-    const prompt = `Explain "${diseaseName}". Return JSON.`;
+    const prompt = `Explain "${diseaseName}" in great detail. Return JSON.`;
     
     try {
       const response = await ai.models.generateContent({
@@ -98,16 +100,12 @@ export const getDiseaseInfo = async (diseaseName: string): Promise<DiseaseInfo> 
         console.warn("Disease info API failed, checking local database.");
         const key = diseaseName.toLowerCase().trim();
         if (OFFLINE_DISEASE_DB[key]) return OFFLINE_DISEASE_DB[key];
-        
-        // Search for partial match
         const match = Object.values(OFFLINE_DISEASE_DB).find(d => d.name.toLowerCase().includes(key));
         if (match) return match;
-
         throw new Error("Disease not found in local or remote database.");
     }
 };
 
-// ... keep other services as they were ...
 export const speakText = async (text: string) => {
   const ai = getAI();
   try {
@@ -122,6 +120,24 @@ export const speakText = async (text: string) => {
     return response.candidates?.[0]?.content?.parts?.[0]?.inlineData?.data;
   } catch (error) { throw error; }
 };
+
+export async function decodePcmAudio(
+  data: Uint8Array,
+  ctx: AudioContext,
+  sampleRate: number = 24000,
+  numChannels: number = 1,
+): Promise<AudioBuffer> {
+  const dataInt16 = new Int16Array(data.buffer);
+  const frameCount = dataInt16.length / numChannels;
+  const buffer = ctx.createBuffer(numChannels, frameCount, sampleRate);
+  for (let channel = 0; channel < numChannels; channel++) {
+    const channelData = buffer.getChannelData(channel);
+    for (let i = 0; i < frameCount; i++) {
+      channelData[i] = dataInt16[i * numChannels + channel] / 32768.0;
+    }
+  }
+  return buffer;
+}
 
 export const analyzeMedia = async (base64Data: string, mimeType: string, promptText: string) => {
   const ai = getAI();
@@ -138,7 +154,7 @@ export const generateVaccinationSchedule = async (childName: string, dob: string
   const ai = getAI();
   try {
     const response = await ai.models.generateContent({
-      model: 'gemini-2.5-flash',
+      model: 'gemini-3-flash-preview',
       contents: `Vaccination schedule for ${childName} born ${dob}. Return JSON array.`,
       config: {
         responseMimeType: "application/json",
@@ -179,20 +195,37 @@ export const getHealthNews = async () => {
   const ai = getAI();
   try {
     const prompt = `Find 5 latest health news. Return raw JSON array of objects with title, summary, source, date, imageUrl.`;
-    const response = await ai.models.generateContent({ model: 'gemini-2.5-flash', contents: prompt, config: { tools: [{ googleSearch: {} }] } });
+    const response = await ai.models.generateContent({ 
+      model: 'gemini-3-flash-preview', 
+      contents: prompt, 
+      config: { tools: [{ googleSearch: {} }] } 
+    });
     const groundingChunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks;
     let jsonString = response.text || '[]';
+    // Fix typo in regex: change /```json/json/g to /```json/g to remove the invalid slash and variable references.
     jsonString = jsonString.replace(/```json/g, '').replace(/```/g, '').trim();
     return { items: JSON.parse(jsonString), groundingChunks };
   } catch (error) { return { items: [], groundingChunks: [] }; }
 };
 
-export const createChatSession = () => {
+export const createChatSession = (systemInstruction?: string) => {
   const ai = getAI();
+  const defaultInstruction = `You are Sehat Mitra, a compassionate health partner. 
+  1. DETAILED EXPLANATIONS: When asked a health question, provide a detailed, clear, and informative answer first.
+  2. SELECTIVE PROMOTION: Only promote a feature IF it is directly related to the user's problem.
+  3. PROMOTION TRIGGERS:
+     - IF question is about babies/kids/immunization: Add "Check the 'Vaccination Schedule' feature in our Sehat Mitra app for the recommended timings and a comprehensive prevention plan."
+     - IF question is about severe pain or identifying symptoms: Add "Check the 'Symptom Checker' feature in our Sehat Mitra app for a more accurate analysis and personalized next steps."
+     - IF question is about a specific report, skin issue, or photo analysis: Add "Check the 'Smart Scan' feature in our Sehat Mitra app for more accurate information based on your uploaded images or videos."
+     - IF question is about finding a doctor or pharmacy: Add "Check the 'Find Resources' feature in our Sehat Mitra app for discovering verified medical facilities and pharmacies near you."
+     - IF user asks for general medical facts or disease definitions: Add "Check the 'Knowledge Base' feature in our Sehat Mitra app for more accurate and detailed medical facts from our encyclopedia."
+  4. NO PROMOTION: Do not promote features for greetings (Hi, Hello), general conversation, or unrelated questions.
+  Always be detailed, accurate, and empathetic.`;
+
   return ai.chats.create({
-    model: 'gemini-2.5-flash',
+    model: 'gemini-3-flash-preview',
     config: {
-      systemInstruction: `You are Sehat Mitra health assistant. Friendly, simple, empathetic. No diagnoses.`,
+      systemInstruction: systemInstruction || defaultInstruction,
     }
   });
 };

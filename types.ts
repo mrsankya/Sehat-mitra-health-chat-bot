@@ -1,9 +1,11 @@
+
 export interface User {
   id: string;
   name: string;
   email: string;
   role: 'user' | 'admin';
   avatar?: string;
+  points: number;
 }
 
 export interface Message {
@@ -35,4 +37,12 @@ export interface DiseaseInfo {
   symptoms: string[];
   prevention: string[];
   treatment: string[];
+}
+
+export interface Feedback {
+  id: string;
+  userName: string;
+  rating: number;
+  comment: string;
+  timestamp: Date;
 }

@@ -1,13 +1,17 @@
+
 import React, { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
-import { AlertTriangle, Send, Loader2, Volume2, BrainCircuit } from 'lucide-react';
+import { AlertTriangle, Send, Loader2, Volume2, BrainCircuit, Trophy } from 'lucide-react';
 import { checkSymptoms, speakText } from '../services/geminiService';
+import { useAuth } from '../contexts/AuthContext';
 
 export default function SymptomChecker() {
+  const { addPoints } = useAuth();
   const [input, setInput] = useState('');
   const [response, setResponse] = useState('');
   const [loading, setLoading] = useState(false);
   const [speaking, setSpeaking] = useState(false);
+  const [showPointToast, setShowPointToast] = useState(false);
 
   const handleCheck = async () => {
     if (!input.trim()) return;
@@ -16,6 +20,12 @@ export default function SymptomChecker() {
     try {
       const result = await checkSymptoms(input);
       setResponse(result || 'No response generated.');
+      
+      // Award points for symptom checking
+      addPoints(20);
+      setShowPointToast(true);
+      setTimeout(() => setShowPointToast(false), 3000);
+
     } catch (error) {
       setResponse("I'm sorry, but I encountered an error while processing your request. Please try again later.");
     } finally {
@@ -27,7 +37,7 @@ export default function SymptomChecker() {
     if (!response || speaking) return;
     setSpeaking(true);
     try {
-      const base64Audio = await speakText(response.replace(/[*#]/g, '').substring(0, 500) + "..."); // Limit text for TTS demo
+      const base64Audio = await speakText(response.replace(/[*#]/g, '').substring(0, 500) + "..."); 
       if (base64Audio) {
         const audioContext = new (window.AudioContext || (window as any).webkitAudioContext)();
         const binaryString = atob(base64Audio);
@@ -49,7 +59,16 @@ export default function SymptomChecker() {
   };
 
   return (
-    <div className="max-w-4xl mx-auto space-y-6">
+    <div className="max-w-4xl mx-auto space-y-6 relative">
+      {/* Points Toast */}
+      {showPointToast && (
+        <div className="fixed top-24 left-1/2 -translate-x-1/2 z-50 animate-bounce">
+           <div className="bg-amber-500 text-white px-6 py-3 rounded-full shadow-2xl flex items-center gap-3 font-black text-sm uppercase tracking-widest border-2 border-white">
+              <Trophy size={18} /> +20 Sehat Points Earned!
+           </div>
+        </div>
+      )}
+
       <div className="bg-red-50 dark:bg-red-900/20 border-l-4 border-red-500 p-4 rounded-r-lg">
         <div className="flex">
           <div className="flex-shrink-0">
@@ -59,9 +78,8 @@ export default function SymptomChecker() {
             <h3 className="text-sm font-medium text-red-800 dark:text-red-200">Important Medical Disclaimer</h3>
             <div className="mt-2 text-sm text-red-700 dark:text-red-300">
               <p>
-                Sehat Mitra is an AI assistant, not a doctor. The information provided here is for educational purposes only and does not constitute medical advice, diagnosis, or treatment. 
-                <strong> Always seek the advice of your physician or other qualified health provider with any questions you may have regarding a medical condition.</strong>
-                If you think you may have a medical emergency, call your doctor or emergency services immediately.
+                Sehat Mitra is an AI assistant, not a doctor. Always seek the advice of your physician. 
+                <strong> This tool is for educational purposes only.</strong>
               </p>
             </div>
           </div>
@@ -81,7 +99,7 @@ export default function SymptomChecker() {
             value={input}
             onChange={(e) => setInput(e.target.value)}
             className="w-full h-32 p-4 border border-gray-300 dark:border-gray-600 rounded-xl focus:ring-2 focus:ring-brand-500 focus:border-brand-500 bg-white text-gray-900 resize-none"
-            placeholder="e.g., I have had a high fever for 2 days, accompanied by a severe headache and nausea..."
+            placeholder="e.g., I have had a high fever for 2 days, accompanied by a severe headache..."
           />
           <button
             onClick={handleCheck}
