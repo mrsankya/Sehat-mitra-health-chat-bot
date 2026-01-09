@@ -11,7 +11,6 @@ export default function SymptomChecker() {
   const [response, setResponse] = useState('');
   const [loading, setLoading] = useState(false);
   const [speaking, setSpeaking] = useState(false);
-  const [showPointToast, setShowPointToast] = useState(false);
 
   const handleCheck = async () => {
     if (!input.trim()) return;
@@ -21,10 +20,8 @@ export default function SymptomChecker() {
       const result = await checkSymptoms(input);
       setResponse(result || 'No response generated.');
       
-      // Award points for symptom checking
+      // Award points for symptom checking (Notification handled by Header glow)
       addPoints(20);
-      setShowPointToast(true);
-      setTimeout(() => setShowPointToast(false), 3000);
 
     } catch (error) {
       setResponse("I'm sorry, but I encountered an error while processing your request. Please try again later.");
@@ -60,15 +57,6 @@ export default function SymptomChecker() {
 
   return (
     <div className="max-w-4xl mx-auto space-y-6 relative">
-      {/* Points Toast */}
-      {showPointToast && (
-        <div className="fixed top-24 left-1/2 -translate-x-1/2 z-50 animate-bounce">
-           <div className="bg-amber-500 text-white px-6 py-3 rounded-full shadow-2xl flex items-center gap-3 font-black text-sm uppercase tracking-widest border-2 border-white">
-              <Trophy size={18} /> +20 Sehat Points Earned!
-           </div>
-        </div>
-      )}
-
       <div className="bg-red-50 dark:bg-red-900/20 border-l-4 border-red-500 p-4 rounded-r-lg">
         <div className="flex">
           <div className="flex-shrink-0">

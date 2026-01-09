@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Outlet, NavLink, useLocation } from 'react-router-dom';
 import { 
   Menu, X, Home, Stethoscope, MessageCircle, 
@@ -18,6 +18,16 @@ export default function Layout() {
   const { theme, toggleTheme } = useTheme();
   const { language, setLanguage, t } = useLanguage();
   const location = useLocation();
+
+  const [pointsAnimating, setPointsAnimating] = useState(false);
+
+  useEffect(() => {
+    if (user?.points) {
+      setPointsAnimating(true);
+      const timer = setTimeout(() => setPointsAnimating(false), 1000);
+      return () => clearTimeout(timer);
+    }
+  }, [user?.points]);
 
   const navItems = [
     { name: t('dashboard'), path: '/', icon: Home },
@@ -73,12 +83,12 @@ export default function Layout() {
           </div>
 
           <div className="px-6 py-4">
-             <div className="bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-xl p-3 flex items-center justify-between">
+             <div className={`transition-all duration-300 border rounded-xl p-3 flex items-center justify-between ${pointsAnimating ? 'bg-amber-100 border-amber-400 scale-105 shadow-lg shadow-amber-500/20' : 'bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-800'}`}>
                 <div className="flex items-center gap-2">
-                   <Trophy className="text-amber-500" size={16} />
+                   <Trophy className={pointsAnimating ? 'text-amber-600 animate-bounce' : 'text-amber-500'} size={16} />
                    <span className="text-[10px] font-black text-amber-800 dark:text-amber-200 uppercase tracking-widest">{t('points')}</span>
                 </div>
-                <span className="text-sm font-black text-amber-600 dark:text-amber-400">{user?.points || 0}</span>
+                <span className={`text-sm font-black transition-colors ${pointsAnimating ? 'text-amber-700' : 'text-amber-600 dark:text-amber-400'}`}>{user?.points || 0}</span>
              </div>
           </div>
 
@@ -138,9 +148,9 @@ export default function Layout() {
           
           <div className="flex items-center gap-4 ml-auto">
              {/* Points Badge */}
-             <div className="hidden sm:flex items-center gap-2 bg-amber-50 dark:bg-amber-900/20 px-3 py-1.5 rounded-full border border-amber-100 dark:border-amber-800">
-                <Trophy size={14} className="text-amber-500" />
-                <span className="text-xs font-black text-amber-700 dark:text-amber-300">{user?.points || 0}</span>
+             <div className={`hidden sm:flex items-center gap-2 px-3 py-1.5 rounded-full border transition-all duration-300 ${pointsAnimating ? 'bg-amber-100 border-amber-400 scale-105 ring-4 ring-amber-500/10' : 'bg-amber-50 dark:bg-amber-900/20 border-amber-100 dark:border-amber-800'}`}>
+                <Trophy size={14} className={pointsAnimating ? 'text-amber-600 animate-bounce' : 'text-amber-500'} />
+                <span className={`text-xs font-black transition-colors ${pointsAnimating ? 'text-amber-700' : 'text-amber-700 dark:text-amber-300'}`}>{user?.points || 0}</span>
              </div>
 
              {/* Language Dropdown */}

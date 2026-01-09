@@ -2,10 +2,10 @@
 import React, { useState, useEffect, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { 
-  Send, Loader2, User, Volume2, StopCircle, RotateCcw, 
-  Bot, Trophy, Mic, Phone, PhoneOff, Activity, Sparkles 
+  Send, Loader2, User, Volume2, RotateCcw, 
+  Bot, Phone, PhoneOff, Activity, Trash2, Mic
 } from 'lucide-react';
-import { createChatSession, OFFLINE_DISEASE_DB, speakText, decodePcmAudio, getRawAI } from '../services/geminiService';
+import { createChatSession, speakText, decodePcmAudio, getRawAI } from '../services/geminiService';
 import { useAuth } from '../contexts/AuthContext';
 import { Message } from '../types';
 import { LiveServerMessage, Modality } from '@google/genai';
@@ -14,17 +14,17 @@ const SUPPORTED_LANGUAGES = [
   { name: 'English', code: 'en-IN', native: 'English' },
   { name: 'Hindi', code: 'hi-IN', native: 'हिन्दी' },
   { name: 'Bengali', code: 'bn-IN', native: 'বাংলা' },
-  { name: 'Marathi', code: 'mr-IN', native: 'মরাठी' },
+  { name: 'Marathi', code: 'mr-IN', native: 'मराठी' },
   { name: 'Telugu', code: 'te-IN', native: 'తెలుగు' },
   { name: 'Tamil', code: 'ta-IN', native: 'தமிழ்' },
   { name: 'Gujarati', code: 'gu-IN', native: 'ગુજરાતી' },
-  { name: 'Kannada', code: 'kn-IN', native: 'કન્નડ' },
+  { name: 'Kannada', code: 'kn-IN', native: 'कन्नड' },
   { name: 'Malayalam', code: 'ml-IN', native: 'മലയാളം' },
   { name: 'Punjabi', code: 'pa-IN', native: 'ਪੰਜਾਬी' },
 ];
 
-const STORAGE_KEY = 'sehat_chat_history_v2';
-const LANG_STORAGE_KEY = 'sehat_chat_lang_v2';
+const STORAGE_KEY = 'sehat_chat_history_v3';
+const LANG_STORAGE_KEY = 'sehat_chat_lang_v3';
 
 export default function SehatChat() {
   const { addPoints } = useAuth();
@@ -52,8 +52,6 @@ export default function SehatChat() {
 
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
-  const [activeAudioMessageId, setActiveAudioMessageId] = useState<string | null>(null);
-  const [showPointToast, setShowPointToast] = useState(false);
 
   // -- Live Voice States --
   const [isLiveActive, setIsLiveActive] = useState(false);
@@ -67,7 +65,6 @@ export default function SehatChat() {
   // -- Refs --
   const chatSession = useRef<any>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const activeAudioSourceRef = useRef<AudioBufferSourceNode | null>(null);
   
   // -- Live Pulse Refs --
   const liveSessionRef = useRef<any>(null);
@@ -87,35 +84,55 @@ export default function SehatChat() {
     localStorage.setItem(LANG_STORAGE_KEY, selectedLang.code);
   }, [selectedLang]);
 
-  const initWelcomeMessage = (langCode: string) => {
+  const initWelcomeMessage = (langName: string) => {
     const welcomeMessages: Record<string, string> = {
-      'en-IN': "Namaste! I am Mitra, your personal health partner. How can I assist you with your health today?",
-      'hi-IN': "नमस्ते! मैं मित्रा हूँ। आज मैं आपके स्वास्थ्य में कैसे मदद कर सकता हूँ?",
+      'English': "Namaste! I am Mitra, your personal health partner. How can I assist you today?",
+      'Hindi': "नमस्ते! मैं मित्रा हूँ। आज मैं आपकी कैसे मदद कर सकता हूँ?",
+      'Marathi': "नमस्कार! मी मित्रा आहे. आज मी तुम्हाला कशी मदत करू शकतो?",
+      'Bengali': "নমস্কার! আমি মিত্র। আজ আমি আপনাকে কীভাবে সাহায্য করতে পারি?"
     };
     return {
-      id: '1',
+      id: 'welcome-msg',
       role: 'model' as const,
-      text: welcomeMessages[langCode] || `Namaste! I am Mitra. How can I help you today in our Sehat Mitra app?`,
+      text: welcomeMessages[langName] || `Namaste! I am Mitra. I am ready to help you in ${langName}.`,
       timestamp: new Date()
     };
   };
 
   useEffect(() => {
-    if (messages.length === 0) setMessages([initWelcomeMessage(selectedLang.code)]);
-    const instruction = `You are Mitra, a health partner. Respond in ${selectedLang.name}.
-    1. DETAILED RESPONSE: Provide a thorough and helpful answer to any medical query.
-    2. CONTEXTUAL PROMOTION: Only suggest a feature if it directly fits the user's problem.
-    - Vaccines: "Check the 'Vaccination Schedule' feature in our Sehat Mitra app for the recommended timings and a comprehensive prevention plan."
-    - Symptoms/Pain: "Check the 'Symptom Checker' feature in our Sehat Mitra app for a more accurate analysis and personalized next steps."
-    - Reports: "Check the 'Smart Scan' feature in our Sehat Mitra app for more accurate information based on your uploaded images."
-    - Clinic hunt: "Check the 'Find Resources' feature in our Sehat Mitra app for discovering verified medical facilities near you."
-    Always explain the health issue first in detail. Do not promote features for non-health talk.`;
-    chatSession.current = createChatSession(instruction);
+    // If no messages or only a welcome message exists, set the initial message
+    if (messages.length === 0 || (messages.length === 1 && messages[0].id === 'welcome-msg')) {
+       setMessages([initWelcomeMessage(selectedLang.name)]);
+    }
+    
+    // Construct session history for AI context
+    const aiHistory = messages
+      .filter(m => m.id !== 'welcome-msg' && !m.isError)
+      .map(m => ({
+        role: m.role,
+        parts: [{ text: m.text }]
+      }));
+
+    const instruction = `STRICT LANGUAGE PROTOCOL: You MUST communicate ONLY in ${selectedLang.name}. 
+    1. All responses, explanations, and advice must be written in ${selectedLang.name}.
+    2. Even if the user types in another language, you MUST respond in ${selectedLang.name}.
+    3. Do NOT use any other language or provide translations.
+    4. Maintain a compassionate, professional tone.`;
+    
+    // Create new session with history from storage
+    chatSession.current = createChatSession(instruction, aiHistory);
   }, [selectedLang]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages, displayTranscription, loading]);
+
+  const clearChat = () => {
+    if (window.confirm("Are you sure you want to clear your chat history? This cannot be undone.")) {
+      setMessages([initWelcomeMessage(selectedLang.name)]);
+      localStorage.removeItem(STORAGE_KEY);
+    }
+  };
 
   function encode(bytes: Uint8Array) {
     let binary = '';
@@ -144,8 +161,10 @@ export default function SehatChat() {
       const ai = getRawAI();
       liveAudioInputContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 16000 });
       liveAudioOutputContextRef.current = new (window.AudioContext || (window as any).webkitAudioContext)({ sampleRate: 24000 });
-      await liveAudioInputContextRef.current.resume();
-      await liveAudioOutputContextRef.current.resume();
+      
+      if (liveAudioInputContextRef.current.state === 'suspended') await liveAudioInputContextRef.current.resume();
+      if (liveAudioOutputContextRef.current.state === 'suspended') await liveAudioOutputContextRef.current.resume();
+
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       liveStreamRef.current = stream;
 
@@ -153,8 +172,9 @@ export default function SehatChat() {
         model: 'gemini-2.5-flash-native-audio-preview-12-2025',
         callbacks: {
           onopen: () => {
-            const source = liveAudioInputContextRef.current!.createMediaStreamSource(stream);
-            const scriptProcessor = liveAudioInputContextRef.current!.createScriptProcessor(4096, 1, 1);
+            if (!liveAudioInputContextRef.current) return;
+            const source = liveAudioInputContextRef.current.createMediaStreamSource(stream);
+            const scriptProcessor = liveAudioInputContextRef.current.createScriptProcessor(4096, 1, 1);
             liveProcessorRef.current = scriptProcessor;
             scriptProcessor.onaudioprocess = (e) => {
               const inputData = e.inputBuffer.getChannelData(0);
@@ -163,10 +183,12 @@ export default function SehatChat() {
               const int16 = new Int16Array(inputData.length);
               for (let i = 0; i < inputData.length; i++) int16[i] = inputData[i] * 32768;
               const pcmBlob = { data: encode(new Uint8Array(int16.buffer)), mimeType: 'audio/pcm;rate=16000' };
-              sessionPromise.then(session => { if (session) session.sendRealtimeInput({ media: pcmBlob }); });
+              sessionPromise.then(session => { 
+                if (session) session.sendRealtimeInput({ media: pcmBlob }); 
+              }).catch(() => {});
             };
             source.connect(scriptProcessor);
-            scriptProcessor.connect(liveAudioInputContextRef.current!.destination);
+            scriptProcessor.connect(liveAudioInputContextRef.current.destination);
           },
           onmessage: async (message: LiveServerMessage) => {
             if (message.serverContent?.outputTranscription) {
@@ -215,30 +237,33 @@ export default function SehatChat() {
             }
           },
           onclose: () => stopLivePulse(),
-          onerror: (err) => { console.error("Live session error:", err); stopLivePulse(); },
+          onerror: (err) => { 
+            console.error("Live session error:", err); 
+            setIsLiveActive(false);
+            stopLivePulse(); 
+          },
         },
         config: {
           responseModalities: [Modality.AUDIO],
           outputAudioTranscription: {},
           inputAudioTranscription: {},
           speechConfig: { voiceConfig: { prebuiltVoiceConfig: { voiceName: 'Zephyr' } } },
-          systemInstruction: `You are Sehat Mitra. Respond in ${selectedLang.name}.
-          1. DETAILED ANSWERS: Provide a thorough health explanation first.
-          2. RELEVANT PROMOTION: Only end your answer with "Check the [Feature Name] feature in our Sehat Mitra app for [Benefit]" if the topic matches the tool.
-          - Vaccines: "Check the 'Vaccination Schedule' feature in our Sehat Mitra app for the recommended timings and a comprehensive prevention plan."
-          - Symptoms/Pain: "Check the 'Symptom Checker' feature in our Sehat Mitra app for more accurate analysis."
-          - Reports: "Check the 'Smart Scan' feature in our Sehat Mitra app for more accurate info from your photos."
-          - Clinics: "Check the 'Find Resources' feature in our Sehat Mitra app for clinics nearby."
-          Avoid promotion for general chat.`,
+          systemInstruction: `STRICT LANGUAGE PROTOCOL: You are Sehat Mitra. You MUST respond ONLY in ${selectedLang.name}.
+          1. All voice output and transcriptions must be in ${selectedLang.name}.
+          2. Do NOT use English unless the selected language is English.
+          3. If the user speaks in another language, you must still respond solely in ${selectedLang.name}.`,
         }
       });
       liveSessionRef.current = sessionPromise;
-    } catch (e) { console.error("Failed to start live pulse:", e); setIsLiveActive(false); }
+    } catch (e) { 
+      console.error("Failed to start live pulse:", e); 
+      setIsLiveActive(false); 
+    }
   };
 
   const stopLivePulse = async () => {
     if (liveSessionRef.current) {
-        liveSessionRef.current.then((session: any) => { if (session) session.close(); });
+        liveSessionRef.current.then((session: any) => { if (session) session.close(); }).catch(() => {});
         liveSessionRef.current = null;
     }
     if (liveStreamRef.current) { liveStreamRef.current.getTracks().forEach(t => t.stop()); liveStreamRef.current = null; }
@@ -263,10 +288,8 @@ export default function SehatChat() {
       const result = await chatSession.current.sendMessage({ message: currentInput });
       setMessages(prev => [...prev, { id: Date.now().toString(), role: 'model', text: result.text, timestamp: new Date() }]);
       addPoints(5);
-      setShowPointToast(true);
-      setTimeout(() => setShowPointToast(false), 2000);
     } catch (error) {
-      setMessages(prev => [...prev, { id: Date.now().toString(), role: 'model', text: "I'm experiencing connectivity issues. Please try again or use voice mode.", timestamp: new Date() }]);
+      setMessages(prev => [...prev, { id: Date.now().toString(), role: 'model', text: "I'm so sorry, but I'm experiencing connectivity issues. Your message was saved locally.", timestamp: new Date(), isError: true }]);
     } finally { setLoading(false); }
   };
 
@@ -285,13 +308,7 @@ export default function SehatChat() {
           </button>
         </div>
       )}
-      {showPointToast && (
-        <div className="absolute top-20 right-6 z-50 animate-bounce">
-           <div className="bg-amber-500 text-white px-4 py-2 rounded-full shadow-lg flex items-center gap-2 font-black text-xs uppercase tracking-widest">
-              <Trophy size={14} /> +5 Sehat Points
-           </div>
-        </div>
-      )}
+      
       <div className="px-6 py-4 bg-gray-50 dark:bg-gray-900 border-b border-gray-200 dark:border-gray-700 flex flex-wrap items-center justify-between gap-4">
         <div className="flex items-center gap-3">
            <div className="w-10 h-10 bg-brand-600 rounded-xl flex items-center justify-center text-white shadow-sm relative">
@@ -302,7 +319,7 @@ export default function SehatChat() {
               <h3 className="font-bold text-gray-900 dark:text-white leading-none">Mitra AI Chat</h3>
               <p className="text-[10px] text-brand-600 font-bold uppercase tracking-widest mt-1 flex items-center gap-1">
                 <span className="w-1.5 h-1.5 rounded-full bg-brand-600 animate-pulse"></span> 
-                {isLiveActive ? "Voice Mode" : "Online"}
+                {isLiveActive ? "Voice Mode" : "History On"}
               </p>
            </div>
         </div>
@@ -313,7 +330,7 @@ export default function SehatChat() {
            <select value={selectedLang.code} onChange={(e) => setSelectedLang(SUPPORTED_LANGUAGES.find(l => l.code === e.target.value)!)} className="text-xs bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-1.5 font-bold outline-none cursor-pointer">
              {SUPPORTED_LANGUAGES.map(lang => <option key={lang.code} value={lang.code}>{lang.native}</option>)}
            </select>
-           <button onClick={() => setMessages([initWelcomeMessage(selectedLang.code)])} className="p-2 text-gray-400 hover:text-brand-600 transition-colors"><RotateCcw size={18} /></button>
+           <button onClick={clearChat} title="Clear Chat History" className="p-2 text-gray-400 hover:text-red-500 transition-colors"><Trash2 size={18} /></button>
         </div>
       </div>
       <div className="flex-1 overflow-y-auto p-6 space-y-6">
@@ -323,7 +340,7 @@ export default function SehatChat() {
               {msg.role === 'user' ? <User size={20} /> : <Bot size={20} />}
             </div>
             <div className={`flex flex-col max-w-[85%] ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
-              <div className={`rounded-2xl px-5 py-4 shadow-sm ${msg.role === 'user' ? 'bg-brand-600 text-white rounded-tr-none' : 'bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 rounded-tl-none border border-gray-100 dark:border-gray-600'}`}>
+              <div className={`rounded-2xl px-5 py-4 shadow-sm ${msg.role === 'user' ? 'bg-brand-600 text-white rounded-tr-none' : 'bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 rounded-tl-none border border-gray-100 dark:border-gray-600'} ${msg.isError ? 'border-red-500 opacity-70' : ''}`}>
                 <div className="prose dark:prose-invert max-w-none text-sm leading-relaxed"><ReactMarkdown>{msg.text}</ReactMarkdown></div>
               </div>
               <span className="text-[10px] mt-2 font-bold text-gray-400 uppercase tracking-tighter">{msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
@@ -362,7 +379,7 @@ export default function SehatChat() {
           <button onClick={isLiveActive ? stopLivePulse : startLivePulse} className={`p-4 rounded-2xl transition-all shadow-sm ${isLiveActive ? 'bg-red-500 text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-400'}`}>
             {isLiveActive ? <Activity className="animate-pulse" /> : <Mic />}
           </button>
-          <input type="text" value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSend()} disabled={isLiveActive} placeholder={isLiveActive ? "Voice mode..." : `Ask anything...`} className="flex-1 px-5 py-4 border border-gray-200 dark:border-gray-700 rounded-2xl bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-white outline-none" />
+          <input type="text" value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSend()} disabled={isLiveActive} placeholder={isLiveActive ? "Voice mode..." : `Ask anything in ${selectedLang.name}...`} className="flex-1 px-5 py-4 border border-gray-200 dark:border-gray-700 rounded-2xl bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-white outline-none" />
           <button onClick={handleSend} disabled={!input.trim() || loading || isLiveActive} className="bg-brand-600 text-white p-4 rounded-2xl hover:bg-brand-700 disabled:opacity-50 transition-all active:scale-95 shadow-xl shadow-brand-500/20">
             {loading ? <Loader2 className="w-6 h-6 animate-spin" /> : <Send className="w-6 h-6" />}
           </button>

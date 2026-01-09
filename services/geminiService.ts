@@ -50,8 +50,9 @@ const getAI = () => {
 
 export const checkSymptoms = async (symptoms: string) => {
   const ai = getAI();
-  const prompt = `Provide a detailed medical analysis of: "${symptoms}". Format in Markdown. 
-  Include a clear disclaimer. 
+  const prompt = `Provide a detailed medical analysis of: "${symptoms}". 
+  DOCTOR BED SIDE MANNER: Start by acknowledging the user's discomfort with genuine empathy. Use phrases like "I'm sorry you're feeling this way" or "I understand how worrying this can be."
+  Format in Markdown. Include a clear disclaimer. 
   ONLY if the user mentions needing deep analysis, photos, or medical reports, suggest: "Check the 'Smart Scan' feature in our Sehat Mitra app for a more accurate analysis of your reports or skin conditions."`;
   
   try {
@@ -66,7 +67,7 @@ export const checkSymptoms = async (symptoms: string) => {
     const normalized = symptoms.toLowerCase();
     for (const [key, data] of Object.entries(OFFLINE_DISEASE_DB)) {
       if (normalized.includes(key)) {
-        return `**[OFFLINE MODE]** Based on your description of "${key}", here is some verified info:\n\n### ${data.name}\n${data.description}\n\n**Symptoms:** ${data.symptoms.join(', ')}\n\n**General Advice:** Please seek medical attention. If you have a physical report, check the 'Smart Scan' feature in our Sehat Mitra app for a detailed digital interpretation.`;
+        return `**[OFFLINE MODE]** I'm sorry to hear you are dealing with this. Based on your description of "${key}", here is some verified info:\n\n### ${data.name}\n${data.description}\n\n**Symptoms:** ${data.symptoms.join(', ')}\n\n**General Advice:** Please seek medical attention. If you have a physical report, check the 'Smart Scan' feature in our Sehat Mitra app for a detailed digital interpretation.`;
       }
     }
     return "I'm currently unable to reach the AI engine. Please check your internet connection. **In an emergency, visit a hospital immediately.**";
@@ -202,28 +203,24 @@ export const getHealthNews = async () => {
     });
     const groundingChunks = response.candidates?.[0]?.groundingMetadata?.groundingChunks;
     let jsonString = response.text || '[]';
-    // Fix typo in regex: change /```json/json/g to /```json/g to remove the invalid slash and variable references.
     jsonString = jsonString.replace(/```json/g, '').replace(/```/g, '').trim();
     return { items: JSON.parse(jsonString), groundingChunks };
   } catch (error) { return { items: [], groundingChunks: [] }; }
 };
 
-export const createChatSession = (systemInstruction?: string) => {
+export const createChatSession = (systemInstruction?: string, history: any[] = []) => {
   const ai = getAI();
   const defaultInstruction = `You are Sehat Mitra, a compassionate health partner. 
-  1. DETAILED EXPLANATIONS: When asked a health question, provide a detailed, clear, and informative answer first.
-  2. SELECTIVE PROMOTION: Only promote a feature IF it is directly related to the user's problem.
-  3. PROMOTION TRIGGERS:
-     - IF question is about babies/kids/immunization: Add "Check the 'Vaccination Schedule' feature in our Sehat Mitra app for the recommended timings and a comprehensive prevention plan."
-     - IF question is about severe pain or identifying symptoms: Add "Check the 'Symptom Checker' feature in our Sehat Mitra app for a more accurate analysis and personalized next steps."
-     - IF question is about a specific report, skin issue, or photo analysis: Add "Check the 'Smart Scan' feature in our Sehat Mitra app for more accurate information based on your uploaded images or videos."
-     - IF question is about finding a doctor or pharmacy: Add "Check the 'Find Resources' feature in our Sehat Mitra app for discovering verified medical facilities and pharmacies near you."
-     - IF user asks for general medical facts or disease definitions: Add "Check the 'Knowledge Base' feature in our Sehat Mitra app for more accurate and detailed medical facts from our encyclopedia."
-  4. NO PROMOTION: Do not promote features for greetings (Hi, Hello), general conversation, or unrelated questions.
-  Always be detailed, accurate, and empathetic.`;
+  DOCTOR-LIKE EMPATHY PROTOCOL:
+  1. ALWAYS start by validating the user's feelings. 
+  2. Maintain a warm, supportive, and patient tone.
+  3. Provide detailed, clear, and informative medical explanations first.
+  4. SELECTIVE PROMOTION: Only promote a feature IF it is directly related to the user's problem.
+  Always be detailed, accurate, and deeply empathetic.`;
 
   return ai.chats.create({
     model: 'gemini-3-flash-preview',
+    history: history,
     config: {
       systemInstruction: systemInstruction || defaultInstruction,
     }
