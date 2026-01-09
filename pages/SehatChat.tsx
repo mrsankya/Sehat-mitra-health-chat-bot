@@ -17,7 +17,7 @@ const SUPPORTED_LANGUAGES = [
   { name: 'Marathi', code: 'mr-IN', native: 'मराठी' },
   { name: 'Telugu', code: 'te-IN', native: 'తెలుగు' },
   { name: 'Tamil', code: 'ta-IN', native: 'தமிழ்' },
-  { name: 'Gujarati', code: 'gu-IN', native: 'ગુજરાતી' },
+  { name: 'Gujarati', code: 'gu-IN', native: 'ગુજરાती' },
   { name: 'Kannada', code: 'kn-IN', native: 'कन्नड' },
   { name: 'Malayalam', code: 'ml-IN', native: 'മലയാളം' },
   { name: 'Punjabi', code: 'pa-IN', native: 'ਪੰਜਾਬी' },
@@ -379,7 +379,7 @@ export default function SehatChat() {
           <button onClick={isLiveActive ? stopLivePulse : startLivePulse} className={`p-4 rounded-2xl transition-all shadow-sm ${isLiveActive ? 'bg-red-500 text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-400'}`}>
             {isLiveActive ? <Activity className="animate-pulse" /> : <Mic />}
           </button>
-          <input type="text" value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSend()} disabled={isLiveActive} placeholder={isLiveActive ? "Voice mode..." : `Ask anything in ${selectedLang.name}...`} className="flex-1 px-5 py-4 border border-gray-200 dark:border-gray-700 rounded-2xl bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-white outline-none" />
+          <input type="text" value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSend()} disabled={isLiveActive} placeholder={isLiveActive ? "Voice mode..." : `Ask anything in ${selectedLang.name}...`} className="flex-1 px-5 py-4 border border-gray-200 dark:border-gray-700 rounded-2xl bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-white dark:bg-gray-700 outline-none" />
           <button onClick={handleSend} disabled={!input.trim() || loading || isLiveActive} className="bg-brand-600 text-white p-4 rounded-2xl hover:bg-brand-700 disabled:opacity-50 transition-all active:scale-95 shadow-xl shadow-brand-500/20">
             {loading ? <Loader2 className="w-6 h-6 animate-spin" /> : <Send className="w-6 h-6" />}
           </button>

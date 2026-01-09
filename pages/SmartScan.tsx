@@ -1,3 +1,4 @@
+
 import React, { useState, useRef } from 'react';
 import { Camera, Video, Upload, X, Loader2, ScanLine } from 'lucide-react';
 import ReactMarkdown from 'react-markdown';
@@ -31,6 +32,26 @@ export default function SmartScan() {
     setResult('');
   };
 
+  const convertToJpeg = (base64Str: string): Promise<string> => {
+    return new Promise((resolve, reject) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = img.width;
+        canvas.height = img.height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) {
+          reject('Could not get canvas context');
+          return;
+        }
+        ctx.drawImage(img, 0, 0);
+        resolve(canvas.toDataURL('image/jpeg', 0.9).split(',')[1]);
+      };
+      img.onerror = reject;
+      img.src = base64Str;
+    });
+  };
+
   const handleAnalyze = async () => {
     if (!selectedFile) return;
 
@@ -39,8 +60,18 @@ export default function SmartScan() {
       const reader = new FileReader();
       reader.onloadend = async () => {
         const base64String = reader.result as string;
-        // Remove data URL prefix for API
-        const base64Data = base64String.split(',')[1];
+        let base64Data = base64String.split(',')[1];
+        let mimeType = selectedFile.type;
+
+        // Gemini doesn't support avif, convert it to jpeg
+        if (mimeType === 'image/avif') {
+          try {
+            base64Data = await convertToJpeg(base64String);
+            mimeType = 'image/jpeg';
+          } catch (err) {
+            console.error('Failed to convert AVIF:', err);
+          }
+        }
         
         const defaultPrompt = activeTab === 'image' 
             ? "Analyze this medical image or report. Identify key features or text. DISCLAIMER: Not a diagnosis."
@@ -48,7 +79,7 @@ export default function SmartScan() {
 
         const analysis = await analyzeMedia(
             base64Data, 
-            selectedFile.type, 
+            mimeType, 
             prompt || defaultPrompt
         );
         setResult(analysis || "No analysis generated.");
@@ -97,7 +128,7 @@ export default function SmartScan() {
             >
                 <Upload className="w-12 h-12 text-gray-400 mx-auto mb-4" />
                 <p className="text-gray-600 dark:text-gray-300 font-medium">Click to upload {activeTab}</p>
-                <p className="text-xs text-gray-500 mt-2">Supports {activeTab === 'image' ? 'JPG, PNG' : 'MP4, WEBM'}</p>
+                <p className="text-xs text-gray-500 mt-2">Supports {activeTab === 'image' ? 'JPG, PNG, WEBP' : 'MP4, WEBM'}</p>
             </div>
         ) : (
             <div className="relative rounded-xl overflow-hidden bg-black mb-6">
@@ -118,7 +149,7 @@ export default function SmartScan() {
             type="file" 
             ref={fileInputRef} 
             className="hidden" 
-            accept={activeTab === 'image' ? "image/*" : "video/*"}
+            accept={activeTab === 'image' ? "image/jpeg,image/png,image/webp,image/avif" : "video/mp4,video/webm"}
             onChange={handleFileSelect}
         />
 
@@ -128,7 +159,7 @@ export default function SmartScan() {
                 value={prompt}
                 onChange={(e) => setPrompt(e.target.value)}
                 placeholder={activeTab === 'image' ? "Ask about this image..." : "What should the AI look for in this video?"}
-                className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-brand-500 bg-white text-gray-900"
+                className="flex-1 px-4 py-2 border border-gray-300 dark:border-gray-600 rounded-lg focus:ring-2 focus:ring-brand-500 bg-white text-gray-900 dark:bg-gray-700 dark:text-white"
             />
             <button 
                 onClick={handleAnalyze}
