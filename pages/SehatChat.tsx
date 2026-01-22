@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import ReactMarkdown from 'react-markdown';
 import { 
   Send, Loader2, User, Volume2, RotateCcw, 
-  Bot, Phone, PhoneOff, Activity, Trash2, Mic
+  Bot, Phone, PhoneOff, Activity, Trash2, Mic, X
 } from 'lucide-react';
 import { createChatSession, speakText, decodePcmAudio, getRawAI } from '../services/geminiService';
 import { useAuth } from '../contexts/AuthContext';
@@ -17,7 +17,7 @@ const SUPPORTED_LANGUAGES = [
   { name: 'Marathi', code: 'mr-IN', native: 'मराठी' },
   { name: 'Telugu', code: 'te-IN', native: 'తెలుగు' },
   { name: 'Tamil', code: 'ta-IN', native: 'தமிழ்' },
-  { name: 'Gujarati', code: 'gu-IN', native: 'ગુજરાती' },
+  { name: 'Gujarati', code: 'gu-IN', native: 'ગુજરાતી' },
   { name: 'Kannada', code: 'kn-IN', native: 'कन्नड' },
   { name: 'Malayalam', code: 'ml-IN', native: 'മലയാളം' },
   { name: 'Punjabi', code: 'pa-IN', native: 'ਪੰਜਾਬी' },
@@ -99,13 +99,21 @@ export default function SehatChat() {
     };
   };
 
+  const startNewSession = (langName: string, history: any[] = []) => {
+    const instruction = `STRICT LANGUAGE PROTOCOL: You MUST communicate ONLY in ${langName}. 
+    1. All responses, explanations, and advice must be written in ${langName}.
+    2. Even if the user types in another language, you MUST respond in ${langName}.
+    3. Do NOT use any other language or provide translations.
+    4. Maintain a compassionate, professional tone.`;
+    
+    chatSession.current = createChatSession(instruction, history);
+  };
+
   useEffect(() => {
-    // If no messages or only a welcome message exists, set the initial message
     if (messages.length === 0 || (messages.length === 1 && messages[0].id === 'welcome-msg')) {
        setMessages([initWelcomeMessage(selectedLang.name)]);
     }
     
-    // Construct session history for AI context
     const aiHistory = messages
       .filter(m => m.id !== 'welcome-msg' && !m.isError)
       .map(m => ({
@@ -113,14 +121,7 @@ export default function SehatChat() {
         parts: [{ text: m.text }]
       }));
 
-    const instruction = `STRICT LANGUAGE PROTOCOL: You MUST communicate ONLY in ${selectedLang.name}. 
-    1. All responses, explanations, and advice must be written in ${selectedLang.name}.
-    2. Even if the user types in another language, you MUST respond in ${selectedLang.name}.
-    3. Do NOT use any other language or provide translations.
-    4. Maintain a compassionate, professional tone.`;
-    
-    // Create new session with history from storage
-    chatSession.current = createChatSession(instruction, aiHistory);
+    startNewSession(selectedLang.name, aiHistory);
   }, [selectedLang]);
 
   useEffect(() => {
@@ -129,9 +130,19 @@ export default function SehatChat() {
 
   const clearChat = () => {
     if (window.confirm("Are you sure you want to clear your chat history? This cannot be undone.")) {
-      setMessages([initWelcomeMessage(selectedLang.name)]);
-      localStorage.removeItem(STORAGE_KEY);
+      const resetMsg = [initWelcomeMessage(selectedLang.name)];
+      setMessages(resetMsg);
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(resetMsg));
+      startNewSession(selectedLang.name, []); // Force re-init AI session with zero history
     }
+  };
+
+  const deleteMessage = (id: string) => {
+    setMessages(prev => {
+        const filtered = prev.filter(m => m.id !== id);
+        if (filtered.length === 0) return [initWelcomeMessage(selectedLang.name)];
+        return filtered;
+    });
   };
 
   function encode(bytes: Uint8Array) {
@@ -327,21 +338,31 @@ export default function SehatChat() {
            <button onClick={isLiveActive ? stopLivePulse : startLivePulse} className={`p-2.5 rounded-xl transition-all shadow-md relative group ${isLiveActive ? 'bg-red-500 text-white' : 'bg-brand-50 text-brand-600 animate-pulse-glow'}`}>
              {isLiveActive ? <PhoneOff size={20} /> : <Phone size={20} />}
            </button>
-           <select value={selectedLang.code} onChange={(e) => setSelectedLang(SUPPORTED_LANGUAGES.find(l => l.code === e.target.value)!)} className="text-xs bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-1.5 font-bold outline-none cursor-pointer">
+           <select value={selectedLang.code} onChange={(e) => setSelectedLang(SUPPORTED_LANGUAGES.find(l => l.code === e.target.value)!)} className="text-xs bg-white dark:bg-gray-800 border border-gray-300 dark:border-gray-600 rounded-lg px-3 py-1.5 font-bold outline-none cursor-pointer text-gray-900 dark:text-white">
              {SUPPORTED_LANGUAGES.map(lang => <option key={lang.code} value={lang.code}>{lang.native}</option>)}
            </select>
            <button onClick={clearChat} title="Clear Chat History" className="p-2 text-gray-400 hover:text-red-500 transition-colors"><Trash2 size={18} /></button>
         </div>
       </div>
-      <div className="flex-1 overflow-y-auto p-6 space-y-6">
+
+      <div className="flex-1 overflow-y-auto p-6 space-y-6 bg-gray-50/50 dark:bg-gray-900/50">
         {messages.map((msg) => (
-          <div key={msg.id} className={`flex items-start gap-3 ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}>
-            <div className={`flex-shrink-0 w-10 h-10 rounded-2xl flex items-center justify-center shadow-sm ${msg.role === 'user' ? 'bg-gray-200 dark:bg-gray-700 text-gray-600' : 'bg-brand-600 text-white'}`}>
+          <div key={msg.id} className={`flex items-start gap-3 group ${msg.role === 'user' ? 'flex-row-reverse' : ''}`}>
+            <div className={`flex-shrink-0 w-10 h-10 rounded-2xl flex items-center justify-center shadow-sm ${msg.role === 'user' ? 'bg-gray-200 dark:bg-gray-700 text-gray-600 dark:text-gray-300' : 'bg-brand-600 text-white'}`}>
               {msg.role === 'user' ? <User size={20} /> : <Bot size={20} />}
             </div>
-            <div className={`flex flex-col max-w-[85%] ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
-              <div className={`rounded-2xl px-5 py-4 shadow-sm ${msg.role === 'user' ? 'bg-brand-600 text-white rounded-tr-none' : 'bg-white dark:bg-gray-700 text-gray-800 dark:text-gray-100 rounded-tl-none border border-gray-100 dark:border-gray-600'} ${msg.isError ? 'border-red-500 opacity-70' : ''}`}>
+            <div className={`flex flex-col max-w-[85%] relative ${msg.role === 'user' ? 'items-end' : 'items-start'}`}>
+              <div className={`rounded-2xl px-5 py-4 shadow-sm relative group-hover:shadow-md transition-shadow ${msg.role === 'user' ? 'bg-brand-600 text-white rounded-tr-none' : 'bg-white dark:bg-gray-800 text-gray-800 dark:text-gray-100 rounded-tl-none border border-gray-100 dark:border-gray-700'} ${msg.isError ? 'border-red-500 opacity-70' : ''}`}>
                 <div className="prose dark:prose-invert max-w-none text-sm leading-relaxed"><ReactMarkdown>{msg.text}</ReactMarkdown></div>
+                {msg.id !== 'welcome-msg' && (
+                  <button 
+                    onClick={() => deleteMessage(msg.id)}
+                    className="absolute -top-2 -right-2 p-1 bg-red-500 text-white rounded-full opacity-0 group-hover:opacity-100 transition-opacity hover:bg-red-600 shadow-sm"
+                    title="Delete message"
+                  >
+                    <X size={10} strokeWidth={4} />
+                  </button>
+                )}
               </div>
               <span className="text-[10px] mt-2 font-bold text-gray-400 uppercase tracking-tighter">{msg.timestamp.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
             </div>
@@ -358,7 +379,7 @@ export default function SehatChat() {
             {displayTranscription.output && (
               <div className="flex items-start gap-3">
                 <div className="flex-shrink-0 w-8 h-8 rounded-full bg-brand-600 text-white flex items-center justify-center"><Bot size={14} /></div>
-                <div className="bg-white dark:bg-gray-700 rounded-2xl px-4 py-2 text-sm border border-brand-100 dark:border-brand-900 text-gray-700 dark:text-gray-200">{displayTranscription.output}</div>
+                <div className="bg-white dark:bg-gray-800 rounded-2xl px-4 py-2 text-sm border border-brand-100 dark:border-brand-900 text-gray-700 dark:text-gray-200">{displayTranscription.output}</div>
               </div>
             )}
           </div>
@@ -366,7 +387,7 @@ export default function SehatChat() {
         {loading && (
           <div className="flex items-start gap-3">
              <div className="flex-shrink-0 w-10 h-10 rounded-2xl bg-brand-600 text-white flex items-center justify-center shadow-sm"><Bot size={20} /></div>
-             <div className="bg-white dark:bg-gray-700 rounded-2xl rounded-tl-none px-5 py-4 border border-gray-100 dark:border-gray-600 flex items-center gap-3">
+             <div className="bg-white dark:bg-gray-800 rounded-2xl rounded-tl-none px-5 py-4 border border-gray-100 dark:border-gray-700 flex items-center gap-3">
                 <Loader2 className="animate-spin text-brand-400" size={20} />
                 <span className="text-xs text-gray-400 font-bold uppercase tracking-widest">thinking...</span>
              </div>
@@ -374,12 +395,13 @@ export default function SehatChat() {
         )}
         <div ref={messagesEndRef} />
       </div>
+
       <div className="p-6 border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-900">
         <div className="flex gap-3">
           <button onClick={isLiveActive ? stopLivePulse : startLivePulse} className={`p-4 rounded-2xl transition-all shadow-sm ${isLiveActive ? 'bg-red-500 text-white' : 'bg-gray-100 dark:bg-gray-800 text-gray-400'}`}>
             {isLiveActive ? <Activity className="animate-pulse" /> : <Mic />}
           </button>
-          <input type="text" value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSend()} disabled={isLiveActive} placeholder={isLiveActive ? "Voice mode..." : `Ask anything in ${selectedLang.name}...`} className="flex-1 px-5 py-4 border border-gray-200 dark:border-gray-700 rounded-2xl bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-white dark:bg-gray-700 outline-none" />
+          <input type="text" value={input} onChange={(e) => setInput(e.target.value)} onKeyDown={(e) => e.key === 'Enter' && handleSend()} disabled={isLiveActive} placeholder={isLiveActive ? "Voice mode..." : `Ask anything in ${selectedLang.name}...`} className="flex-1 px-5 py-4 border border-gray-200 dark:border-gray-700 rounded-2xl bg-gray-50 dark:bg-gray-800 text-gray-900 dark:text-white outline-none focus:ring-2 focus:ring-brand-500" />
           <button onClick={handleSend} disabled={!input.trim() || loading || isLiveActive} className="bg-brand-600 text-white p-4 rounded-2xl hover:bg-brand-700 disabled:opacity-50 transition-all active:scale-95 shadow-xl shadow-brand-500/20">
             {loading ? <Loader2 className="w-6 h-6 animate-spin" /> : <Send className="w-6 h-6" />}
           </button>
